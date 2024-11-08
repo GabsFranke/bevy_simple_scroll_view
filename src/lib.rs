@@ -77,13 +77,92 @@ pub fn create_scroll_view(
     }
 }
 
+// Common helper function to handle scroll logic
+fn handle_scroll_for_view(
+    children: &Children,
+    scroll_view: &ScrollView,
+    node: &Node,
+    delta: f32,
+    content_q: &mut Query<(&mut ScrollableContent, &Node)>,
+) -> (bool, bool) {
+    let container_height = node.size().y;
+    let mut scroll_applied = false;
+    let mut at_boundary = false;
+
+    for &child in children.iter() {
+        if let Ok(item) = content_q.get_mut(child) {
+            let mut scroll = item.0;
+            let max_scroll = (item.1.size().y - container_height).max(0.0);
+            
+            // Check if we're at the scroll boundaries
+            let new_pos = scroll.pos_y + delta;
+            let will_hit_top = new_pos > 0.;
+            let will_hit_bottom = new_pos < -max_scroll;
+            
+            scroll.pos_y += delta;
+            scroll.pos_y = scroll.pos_y.clamp(-max_scroll, 0.);
+            
+            // If we have scrollable content
+            if max_scroll > 0.0 {
+                if !will_hit_top && !will_hit_bottom {
+                    scroll_applied = true;
+                } else {
+                    at_boundary = true;
+                }
+            }
+        }
+    }
+
+    // Consume the event if:
+    // 1. We actually scrolled and propagation is disabled, OR
+    // 2. We hit a boundary and propagation is disabled
+    let should_consume = !scroll_view.propagate && (scroll_applied || at_boundary);
+    (should_consume, at_boundary)
+}
+
+fn scroll_events(
+    mut scroll_evr: EventReader<MouseWheel>,
+    mut q: Query<(Entity, &Children, &Interaction, &ScrollView, &Node), With<ScrollView>>,
+    time: Res<Time>,
+    mut content_q: Query<(&mut ScrollableContent, &Node)>,
+) {
+    use bevy::input::mouse::MouseScrollUnit;
+    for ev in scroll_evr.read() {
+        let hovered_scrolls: Vec<_> = q
+            .iter_mut()
+            .filter(|(_, _, &interaction, _, _)| interaction == Interaction::Hovered)
+            .collect();
+
+        let mut consumed = false;
+        
+        for (_entity, children, _, scroll_view, node) in hovered_scrolls.into_iter().rev() {
+            if consumed {
+                continue;
+            }
+
+            let y = match ev.unit {
+                MouseScrollUnit::Line => {
+                    ev.y * time.delta().as_secs_f32() * scroll_view.scroll_speed
+                }
+                MouseScrollUnit::Pixel => ev.y,
+            };
+            
+            let delta = y * time.delta().as_secs_f32() * scroll_view.scroll_speed;
+            let (should_consume, _) = handle_scroll_for_view(children, scroll_view, node, delta, &mut content_q);
+            
+            if should_consume {
+                consumed = true;
+            }
+        }
+    }
+}
+
 fn input_mouse_pressed_move(
     mut motion_evr: EventReader<MouseMotion>,
     mut q: Query<(&Children, &Interaction, &ScrollView, &Node), With<ScrollView>>,
     mut content_q: Query<(&mut ScrollableContent, &Node)>,
 ) {
     for evt in motion_evr.read() {
-        // Get all pressed scroll views
         let pressed_scrolls: Vec<_> = q
             .iter_mut()
             .filter(|(_, &interaction, _, _)| interaction == Interaction::Pressed)
@@ -91,36 +170,14 @@ fn input_mouse_pressed_move(
 
         let mut consumed = false;
 
-        // Process from innermost (last) to outermost (first)
         for (children, _, scroll_view, node) in pressed_scrolls.into_iter().rev() {
             if consumed {
                 continue;
             }
 
-            let container_height = node.size().y;
-            let mut scroll_applied = false;
-
-            for &child in children.iter() {
-                if let Ok(item) = content_q.get_mut(child) {
-                    let mut scroll = item.0;
-                    let max_scroll = (item.1.size().y - container_height).max(0.0);
-
-                    // Check if we're at the scroll boundaries
-                    let new_pos = scroll.pos_y + evt.delta.y;
-                    let will_clamp = new_pos < -max_scroll || new_pos > 0.;
-
-                    scroll.pos_y += evt.delta.y;
-                    scroll.pos_y = scroll.pos_y.clamp(-max_scroll, 0.);
-
-                    // If we actually scrolled and didn't hit the boundaries, mark as applied
-                    if !will_clamp && max_scroll > 0.0 {
-                        scroll_applied = true;
-                    }
-                }
-            }
-
-            // If we applied scroll and don't want to propagate, mark as consumed
-            if scroll_applied && !scroll_view.propagate {
+            let (should_consume, _) = handle_scroll_for_view(children, scroll_view, node, evt.delta.y, &mut content_q);
+            
+            if should_consume {
                 consumed = true;
             }
         }
@@ -137,7 +194,6 @@ fn input_touch_pressed_move(
             continue;
         };
 
-        // Get all pressed scroll views
         let pressed_scrolls: Vec<_> = q
             .iter_mut()
             .filter(|(_, &interaction, _, _)| interaction == Interaction::Pressed)
@@ -145,98 +201,14 @@ fn input_touch_pressed_move(
 
         let mut consumed = false;
 
-        // Process from innermost (last) to outermost (first)
         for (children, _, scroll_view, node) in pressed_scrolls.into_iter().rev() {
             if consumed {
                 continue;
             }
 
-            let container_height = node.size().y;
-            let mut scroll_applied = false;
-
-            for &child in children.iter() {
-                if let Ok(item) = content_q.get_mut(child) {
-                    let mut scroll = item.0;
-                    let max_scroll = (item.1.size().y - container_height).max(0.0);
-
-                    // Check if we're at the scroll boundaries
-                    let new_pos = scroll.pos_y + touch.delta().y;
-                    let will_clamp = new_pos < -max_scroll || new_pos > 0.;
-
-                    scroll.pos_y += touch.delta().y;
-                    scroll.pos_y = scroll.pos_y.clamp(-max_scroll, 0.);
-
-                    // If we actually scrolled and didn't hit the boundaries, mark as applied
-                    if !will_clamp && max_scroll > 0.0 {
-                        scroll_applied = true;
-                    }
-                }
-            }
-
-            // If we applied scroll and don't want to propagate, mark as consumed
-            if scroll_applied && !scroll_view.propagate {
-                consumed = true;
-            }
-        }
-    }
-}
-
-fn scroll_events(
-    mut scroll_evr: EventReader<MouseWheel>,
-    mut q: Query<(Entity, &Children, &Interaction, &ScrollView, &Node), With<ScrollView>>,
-    time: Res<Time>,
-    mut content_q: Query<(&mut ScrollableContent, &Node)>,
-) {
-    use bevy::input::mouse::MouseScrollUnit;
-    for ev in scroll_evr.read() {
-        // Get all hovered scroll views
-        let hovered_scrolls: Vec<_> = q
-            .iter_mut()
-            .filter(|(_, _, &interaction, _, _)| interaction == Interaction::Hovered)
-            .collect();
-
-        // If we have multiple hovered scroll views, we only want to scroll the innermost one
-        // unless propagation is enabled
-        let mut consumed = false;
-
-        // Process from innermost (last) to outermost (first)
-        for (_entity, children, _, scroll_view, node) in hovered_scrolls.into_iter().rev() {
-            if consumed {
-                continue;
-            }
-
-            let y = match ev.unit {
-                MouseScrollUnit::Line => {
-                    ev.y * time.delta().as_secs_f32() * scroll_view.scroll_speed
-                }
-                MouseScrollUnit::Pixel => ev.y,
-            };
-
-            let container_height = node.size().y;
-            let mut scroll_applied = false;
-
-            for &child in children.iter() {
-                if let Ok(item) = content_q.get_mut(child) {
-                    let y = y * time.delta().as_secs_f32() * scroll_view.scroll_speed;
-                    let mut scroll = item.0;
-                    let max_scroll = (item.1.size().y - container_height).max(0.0);
-
-                    // Check if we're at the scroll boundaries
-                    let new_pos = scroll.pos_y + y;
-                    let will_clamp = new_pos < -max_scroll || new_pos > 0.;
-
-                    scroll.pos_y += y;
-                    scroll.pos_y = scroll.pos_y.clamp(-max_scroll, 0.);
-
-                    // If we actually scrolled and didn't hit the boundaries, mark as applied
-                    if !will_clamp && max_scroll > 0.0 {
-                        scroll_applied = true;
-                    }
-                }
-            }
-
-            // If we applied scroll and don't want to propagate, mark as consumed
-            if scroll_applied && !scroll_view.propagate {
+            let (should_consume, _) = handle_scroll_for_view(children, scroll_view, node, touch.delta().y, &mut content_q);
+            
+            if should_consume {
                 consumed = true;
             }
         }
