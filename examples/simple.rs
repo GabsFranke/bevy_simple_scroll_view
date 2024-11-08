@@ -1,10 +1,11 @@
 use bevy::prelude::*;
 use bevy_simple_scroll_view::*;
 
-const CLR_1: Color = Color::rgb(0.168, 0.168, 0.168);
-const CLR_2: Color = Color::rgb(0.109, 0.109, 0.109);
-const CLR_3: Color = Color::rgb(0.569, 0.592, 0.647);
-const CLR_4: Color = Color::rgb(0.902, 0.4, 0.004);
+const CLR_1: Color = Color::srgb(0.168, 0.168, 0.168);
+const CLR_2: Color = Color::srgb(0.109, 0.109, 0.109);
+const CLR_3: Color = Color::srgb(0.569, 0.592, 0.647);
+const CLR_4: Color = Color::srgb(0.902, 0.4, 0.004);
+const CLR_5: Color = Color::srgb(0.2, 0.3, 0.4);
 
 fn main() {
     App::new()
@@ -28,6 +29,7 @@ fn prepare(mut commands: Commands) {
             ..default()
         })
         .with_children(|p| {
+            // Reset button
             p.spawn(ButtonBundle {
                 style: Style {
                     margin: UiRect::all(Val::Px(15.0)),
@@ -51,10 +53,12 @@ fn prepare(mut commands: Commands) {
                     },
                 ));
             });
+            // Main scroll view
             p.spawn((
                 NodeBundle {
                     style: Style {
                         width: Val::Percent(80.0),
+                        height: Val::Percent(80.0),
                         margin: UiRect::all(Val::Px(15.0)),
                         ..default()
                     },
@@ -67,7 +71,7 @@ fn prepare(mut commands: Commands) {
                 p.spawn((
                     NodeBundle {
                         style: Style {
-                            flex_direction: bevy::ui::FlexDirection::Column,
+                            flex_direction: FlexDirection::Column,
                             width: Val::Percent(100.0),
                             ..default()
                         },
@@ -76,6 +80,68 @@ fn prepare(mut commands: Commands) {
                     ScrollableContent::default(),
                 ))
                 .with_children(|scroll_area| {
+                    // Add a nested scroll view
+                    scroll_area
+                        .spawn((
+                            NodeBundle {
+                                style: Style {
+                                    height: Val::Px(200.0),
+                                    width: Val::Percent(100.0),
+                                    margin: UiRect::all(Val::Px(15.0)),
+                                    ..default()
+                                },
+                                background_color: CLR_5.into(),
+                                ..default()
+                            },
+                            ScrollView::default(),
+                        ))
+                        .with_children(|p| {
+                            p.spawn((
+                                NodeBundle {
+                                    style: Style {
+                                        flex_direction: FlexDirection::Column,
+                                        justify_content: JustifyContent::Center,
+                                        width: Val::Percent(100.0),
+                                        ..default()
+                                    },
+                                    ..default()
+                                },
+                                ScrollableContent::default(),
+                            ))
+                            .with_children(|inner_scroll| {
+                                // Add content to nested scroll view
+                                for i in 0..10 {
+                                    inner_scroll
+                                        .spawn(NodeBundle {
+                                            style: Style {
+                                                width: Val::Percent(95.0),
+                                                margin: UiRect::all(Val::Px(10.0)),
+                                                border: UiRect::all(Val::Px(3.0)),
+                                                padding: UiRect::all(Val::Px(20.0)),
+                                                ..default()
+                                            },
+                                            background_color: CLR_2.into(),
+                                            border_color: CLR_4.into(),
+                                            ..default()
+                                        })
+                                        .with_children(|p| {
+                                            p.spawn(
+                                                TextBundle::from_section(
+                                                    format!("Inner {}", i),
+                                                    TextStyle {
+                                                        font_size: 20.0,
+                                                        color: CLR_4,
+                                                        ..default()
+                                                    },
+                                                )
+                                                .with_text_justify(JustifyText::Center),
+                                            );
+                                        });
+                                }
+                            });
+                        });
+
+                    // Main scroll view content
                     for i in 0..21 {
                         scroll_area
                             .spawn(NodeBundle {
@@ -92,7 +158,7 @@ fn prepare(mut commands: Commands) {
                             .with_children(|p| {
                                 p.spawn(
                                     TextBundle::from_section(
-                                        format!("Nr {}", i),
+                                        format!("Outer {}", i),
                                         TextStyle {
                                             font_size: 25.0,
                                             color: CLR_3,
