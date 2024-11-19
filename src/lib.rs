@@ -45,6 +45,8 @@ pub struct ScrollView {
     /// Controls whether scroll events should propagate to parent scroll views
     /// Default is false.
     pub propagate: bool,
+    /// Enable horizontal scrolling
+    pub horizontal: bool,
 }
 
 impl Default for ScrollView {
@@ -52,6 +54,7 @@ impl Default for ScrollView {
         Self {
             scroll_speed: 200.0,
             propagate: false,
+            horizontal: false,
         }
     }
 }
@@ -60,8 +63,10 @@ impl Default for ScrollView {
 /// It is possible to update the field `pos_y` manually to move scrollview to desired location.
 #[derive(Component, Debug, Reflect, Default)]
 pub struct ScrollableContent {
-    /// Scroll container offset to the `ScrollView`.
+    /// Vertical scroll container offset
     pub pos_y: f32,
+    /// Horizontal scroll container offset
+    pub pos_x: f32,
 }
 
 pub fn create_scroll_view(
@@ -82,40 +87,57 @@ fn handle_scroll_for_view(
     children: &Children,
     scroll_view: &ScrollView,
     node: &Node,
-    delta: f32,
+    delta_x: f32,
+    delta_y: f32,
     content_q: &mut Query<(&mut ScrollableContent, &Node)>,
 ) -> (bool, bool) {
-    let container_height = node.size().y;
+    let container_size = node.size();
     let mut scroll_applied = false;
     let mut at_boundary = false;
 
     for &child in children.iter() {
         if let Ok(item) = content_q.get_mut(child) {
             let mut scroll = item.0;
-            let max_scroll = (item.1.size().y - container_height).max(0.0);
+            let content_size = item.1.size();
             
-            // Check if we're at the scroll boundaries
-            let new_pos = scroll.pos_y + delta;
-            let will_hit_top = new_pos > 0.;
-            let will_hit_bottom = new_pos < -max_scroll;
-            
-            scroll.pos_y += delta;
-            scroll.pos_y = scroll.pos_y.clamp(-max_scroll, 0.);
-            
-            // If we have scrollable content
-            if max_scroll > 0.0 {
-                if !will_hit_top && !will_hit_bottom {
-                    scroll_applied = true;
-                } else {
-                    at_boundary = true;
+            // Handle vertical scrolling
+            if !scroll_view.horizontal {
+                let max_scroll = (content_size.y - container_size.y).max(0.0);
+                let new_pos = scroll.pos_y + delta_y;
+                let will_hit_top = new_pos > 0.;
+                let will_hit_bottom = new_pos < -max_scroll;
+                
+                scroll.pos_y += delta_y;
+                scroll.pos_y = scroll.pos_y.clamp(-max_scroll, 0.);
+                
+                if max_scroll > 0.0 {
+                    if !will_hit_top && !will_hit_bottom {
+                        scroll_applied = true;
+                    } else {
+                        at_boundary = true;
+                    }
+                }
+            } else {
+                // Handle horizontal scrolling
+                let max_scroll = (content_size.x - container_size.x).max(0.0);
+                let new_pos = scroll.pos_x + delta_x;
+                let will_hit_left = new_pos > 0.;
+                let will_hit_right = new_pos < -max_scroll;
+                
+                scroll.pos_x += delta_x;
+                scroll.pos_x = scroll.pos_x.clamp(-max_scroll, 0.);
+                
+                if max_scroll > 0.0 {
+                    if !will_hit_left && !will_hit_right {
+                        scroll_applied = true;
+                    } else {
+                        at_boundary = true;
+                    }
                 }
             }
         }
     }
 
-    // Consume the event if:
-    // 1. We actually scrolled and propagation is disabled, OR
-    // 2. We hit a boundary and propagation is disabled
     let should_consume = !scroll_view.propagate && (scroll_applied || at_boundary);
     (should_consume, at_boundary)
 }
@@ -140,15 +162,28 @@ fn scroll_events(
                 continue;
             }
 
-            let y = match ev.unit {
+            let scroll_amount = match ev.unit {
                 MouseScrollUnit::Line => {
                     ev.y * time.delta().as_secs_f32() * scroll_view.scroll_speed
                 }
                 MouseScrollUnit::Pixel => ev.y,
+            } * time.delta().as_secs_f32() * scroll_view.scroll_speed;
+
+            // For horizontal scrolling, we'll use the vertical scroll as horizontal
+            let (delta_x, delta_y) = if scroll_view.horizontal {
+                (scroll_amount, 0.0)
+            } else {
+                (0.0, scroll_amount)
             };
             
-            let delta = y * time.delta().as_secs_f32() * scroll_view.scroll_speed;
-            let (should_consume, _) = handle_scroll_for_view(children, scroll_view, node, delta, &mut content_q);
+            let (should_consume, _) = handle_scroll_for_view(
+                children, 
+                scroll_view, 
+                node, 
+                delta_x,
+                delta_y, 
+                &mut content_q
+            );
             
             if should_consume {
                 consumed = true;
@@ -175,7 +210,7 @@ fn input_mouse_pressed_move(
                 continue;
             }
 
-            let (should_consume, _) = handle_scroll_for_view(children, scroll_view, node, evt.delta.y, &mut content_q);
+            let (should_consume, _) = handle_scroll_for_view(children, scroll_view, node, evt.delta.x, evt.delta.y, &mut content_q);
             
             if should_consume {
                 consumed = true;
@@ -206,7 +241,7 @@ fn input_touch_pressed_move(
                 continue;
             }
 
-            let (should_consume, _) = handle_scroll_for_view(children, scroll_view, node, touch.delta().y, &mut content_q);
+            let (should_consume, _) = handle_scroll_for_view(children, scroll_view, node, touch.delta().x, touch.delta().y, &mut content_q);
             
             if should_consume {
                 consumed = true;
@@ -218,5 +253,6 @@ fn input_touch_pressed_move(
 fn scroll_update(mut q: Query<(&ScrollableContent, &mut Style), Changed<ScrollableContent>>) {
     for (scroll, mut style) in q.iter_mut() {
         style.top = Val::Px(scroll.pos_y);
+        style.left = Val::Px(scroll.pos_x);
     }
 }

@@ -53,7 +53,7 @@ fn prepare(mut commands: Commands) {
                     },
                 ));
             });
-            // Main scroll view
+            // Main vertical scroll view
             p.spawn((
                 NodeBundle {
                     style: Style {
@@ -86,8 +86,9 @@ fn prepare(mut commands: Commands) {
                             NodeBundle {
                                 style: Style {
                                     height: Val::Px(200.0),
-                                    width: Val::Percent(100.0),
+                                    width: Val::Percent(95.0),
                                     margin: UiRect::all(Val::Px(15.0)),
+                                    justify_content: JustifyContent::Center,
                                     ..default()
                                 },
                                 background_color: CLR_5.into(),
@@ -108,35 +109,104 @@ fn prepare(mut commands: Commands) {
                                 },
                                 ScrollableContent::default(),
                             ))
-                            .with_children(|inner_scroll| {
-                                // Add content to nested scroll view
-                                for i in 0..10 {
-                                    inner_scroll
-                                        .spawn(NodeBundle {
+                            .with_children(|p| {
+                                // Horizontal scroll view
+                                p.spawn((
+                                    NodeBundle {
+                                        style: Style {
+                                            width: Val::Percent(95.0),
+                                            margin: UiRect::all(Val::Px(10.0)),
+                                            border: UiRect::all(Val::Px(3.0)),
+                                            padding: UiRect::all(Val::Px(20.0)),
+                                            height: Val::Px(80.0),
+                                            ..default()
+                                        },
+                                        background_color: CLR_3.into(),
+                                        ..default()
+                                    },
+                                    ScrollView {
+                                        horizontal: true,
+                                        ..default()
+                                    },
+                                ))
+                                .with_children(|p| {
+                                    p.spawn((
+                                        NodeBundle {
                                             style: Style {
-                                                width: Val::Percent(95.0),
-                                                margin: UiRect::all(Val::Px(10.0)),
-                                                border: UiRect::all(Val::Px(3.0)),
-                                                padding: UiRect::all(Val::Px(20.0)),
+                                                flex_direction: FlexDirection::Row,
+                                                height: Val::Percent(100.0),
+                                                align_items: AlignItems::Center,
                                                 ..default()
                                             },
-                                            background_color: CLR_2.into(),
-                                            border_color: CLR_4.into(),
                                             ..default()
-                                        })
-                                        .with_children(|p| {
-                                            p.spawn(
-                                                TextBundle::from_section(
-                                                    format!("Inner {}", i),
-                                                    TextStyle {
-                                                        font_size: 20.0,
-                                                        color: CLR_4,
+                                        },
+                                        ScrollableContent::default(),
+                                    ))
+                                    .with_children(
+                                        |scroll_area| {
+                                            // Add horizontal scroll content
+                                            for i in 0..10 {
+                                                scroll_area
+                                                    .spawn(NodeBundle {
+                                                        style: Style {
+                                                            height: Val::Px(60.0),
+                                                            margin: UiRect::horizontal(Val::Px(
+                                                                15.0,
+                                                            )),
+                                                            border: UiRect::all(Val::Px(5.0)),
+                                                            padding: UiRect::all(Val::Px(10.0)),
+                                                            align_items: AlignItems::Center,
+                                                            justify_content: JustifyContent::Center,
+                                                            ..default()
+                                                        },
+                                                        background_color: CLR_2.into(),
+                                                        border_color: CLR_4.into(),
                                                         ..default()
-                                                    },
-                                                )
-                                                .with_text_justify(JustifyText::Center),
-                                            );
-                                        });
+                                                    })
+                                                    .with_children(|p| {
+                                                        p.spawn(
+                                                            TextBundle::from_section(
+                                                                format!("Horizontal {}", i),
+                                                                TextStyle {
+                                                                    font_size: 16.0,
+                                                                    color: CLR_3,
+                                                                    ..default()
+                                                                },
+                                                            )
+                                                            .with_text_justify(JustifyText::Center),
+                                                        );
+                                                    });
+                                            }
+                                        },
+                                    );
+                                });
+                                // Add content to nested vertical scroll view
+                                for i in 0..11 {
+                                    p.spawn(NodeBundle {
+                                        style: Style {
+                                            width: Val::Percent(95.0),
+                                            margin: UiRect::all(Val::Px(10.0)),
+                                            border: UiRect::all(Val::Px(3.0)),
+                                            padding: UiRect::all(Val::Px(20.0)),
+                                            ..default()
+                                        },
+                                        background_color: CLR_2.into(),
+                                        border_color: CLR_4.into(),
+                                        ..default()
+                                    })
+                                    .with_children(|p| {
+                                        p.spawn(
+                                            TextBundle::from_section(
+                                                format!("Inner {}", i),
+                                                TextStyle {
+                                                    font_size: 20.0,
+                                                    color: CLR_4,
+                                                    ..default()
+                                                },
+                                            )
+                                            .with_text_justify(JustifyText::Center),
+                                        );
+                                    });
                                 }
                             });
                         });
@@ -182,6 +252,7 @@ fn reset_scroll(
         if interaction == &Interaction::Pressed {
             for mut scroll in scrolls_q.iter_mut() {
                 scroll.pos_y = 0.0;
+                scroll.pos_x = 0.0;
             }
         }
     }
